@@ -1,0 +1,194 @@
+# Local AWS training stack: Floci (LocalStack) AWS, PySpark cluster + UI,
+# Kafka, Netdata monitoring, and an FTP server.
+#
+# Start with:
+#   docker compose --env-file settings.config up -d
+#
+# (the --env-file flag is required because credentials live in
+# settings.config instead of the default .env file)
+
+name: tinitiate-aws-masterclass
+
+networks:
+  aws-masterclass:
+    driver: bridge
+
+volumes:
+  floci-data:
+  kafka-data:
+  pyspark-notebooks:
+  ftp-data:
+  netdata-config:
+  netdata-lib:
+  netdata-cache:
+
+services:
+
+  # ---------------- Floci AWS (LocalStack) ----------------
+  floci-aws:
+    # Pinned to 3.8 - newer LocalStack releases require a free-account auth
+    # token even for community-tier services (localstack:latest now exits
+    # with "License activation failed" unless LOCALSTACK_AUTH_TOKEN is set).
+    image: localstack/localstack:3.8
+    container_name: floci-aws
+    environment:
+      - SERVICES=${FLOCI_SERVICES}
+      - DEBUG=1
+      - AWS_ACCESS_KEY_ID=${FLOCI_AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${FLOCI_AWS_SECRET_ACCESS_KEY}
+      - DEFAULT_REGION=${FLOCI_AWS_DEFAULT_REGION}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - LOCALSTACK_AUTH_TOKEN=${FLOCI_AUTH_TOKEN}
+    ports:
+      - "${FLOCI_EDGE_PORT}:4566"
+    volumes:
+      - floci-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [aws-masterclass]
+    restart: unless-stopped
+
+  # ---------------- PySpark cluster ----------------
+  # Uses the official Apache Spark image (not Bitnami - Broadcom pulled the
+  # free "latest" tags for most Bitnami images in 2025, so bitnami/spark no
+  # longer has any public tags at all).
+  spark-master:
+    image: apache/spark:4.2.0-python3
+    container_name: spark-master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "${SPARK_MASTER_PORT}:7077"   # Spark master RPC
+      - "${SPARK_MASTER_UI_PORT}:8080"  # pysparkui - cluster/master UI
+    networks: [aws-masterclass]
+    restart: unless-stopped
+
+  spark-worker:
+    image: apache/spark:4.2.0-python3
+    container_name: spark-worker
+    depends_on: [spark-master]
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    environment:
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
+    ports:
+      - "${SPARK_WORKER_UI_PORT}:8081"  # worker UI
+    networks: [aws-masterclass]
+    restart: unless-stopped
+
+  pyspark:
+    # quay.io is the actively-maintained home for Jupyter Docker Stacks;
+    # docker.io/jupyter/pyspark-notebook stopped receiving pushes in 2023.
+    # This tag bundles Spark 4.2.0, matching spark-master/spark-worker above.
+    image: quay.io/jupyter/pyspark-notebook:latest
+    container_name: pyspark
+    depends_on: [spark-master]
+    environment:
+      - JUPYTER_TOKEN=${PYSPARK_JUPYTER_TOKEN}
+      - SPARK_MASTER=spark://spark-master:7077
+    ports:
+      - "${JUPYTER_PORT}:8888"     # Jupyter (pyspark dev)
+      - "${PYSPARK_UI_PORT}:4040"  # pysparkui - live application UI
+    volumes:
+      - pyspark-notebooks:/home/jovyan/work
+    networks: [aws-masterclass]
+    restart: unless-stopped
+
+  # ---------------- Kafka (KRaft, SASL/PLAIN auth) ----------------
+  # Uses Confluent's cp-kafka image (not Bitnami - see note above; the same
+  # Broadcom change removed all public tags for bitnami/kafka too).
+  kafka:
+    image: confluentinc/cp-kafka:7.6.13
+    container_name: kafka
+    # cp-kafka's launch script only auto-generates the SASL JAAS file when
+    # KAFKA_OPTS is left unset - but it also refuses to start SASL listeners
+    # at all unless KAFKA_OPTS IS set, which is a contradiction for this
+    # image/version. Working around it by writing the JAAS file ourselves
+    # and pointing KAFKA_OPTS at it before handing off to the real entrypoint.
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        mkdir -p /tmp/kafka-secrets
+        cat > /tmp/kafka-secrets/kafka_server_jaas.conf <<'JAAS'
+        KafkaServer {
+          org.apache.kafka.common.security.plain.PlainLoginModule required
+          username="${KAFKA_SASL_USERNAME}"
+          password="${KAFKA_SASL_PASSWORD}"
+          user_${KAFKA_SASL_USERNAME}="${KAFKA_SASL_PASSWORD}";
+        };
+        JAAS
+        export KAFKA_OPTS="-Djava.security.auth.login.config=/tmp/kafka-secrets/kafka_server_jaas.conf"
+        exec /etc/confluent/docker/run
+    environment:
+      - CLUSTER_ID=${KAFKA_CLUSTER_ID}
+      - KAFKA_NODE_ID=0
+      - KAFKA_PROCESS_ROLES=controller,broker
+      - KAFKA_LISTENERS=SASL_PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:${KAFKA_CONTROLLER_PORT}
+      - KAFKA_ADVERTISED_LISTENERS=SASL_PLAINTEXT://kafka:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=0@kafka:${KAFKA_CONTROLLER_PORT}
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_INTER_BROKER_LISTENER_NAME=SASL_PLAINTEXT
+      - KAFKA_SASL_ENABLED_MECHANISMS=PLAIN
+      - KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL=PLAIN
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+    ports:
+      - "${KAFKA_BROKER_PORT}:9092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks: [aws-masterclass]
+    restart: unless-stopped
+
+  # ---------------- FTP server ----------------
+  ftp:
+    image: stilliard/pure-ftpd:latest
+    container_name: ftp-server
+    environment:
+      - FTP_USER_NAME=${FTP_USER_NAME}
+      - FTP_USER_PASS=${FTP_USER_PASS}
+      - FTP_USER_HOME=${FTP_USER_HOME}
+      - PUBLICHOST=localhost
+    ports:
+      - "${FTP_PORT}:21"
+      - "${FTP_PASSIVE_PORT_RANGE}:${FTP_PASSIVE_PORT_RANGE}"
+    volumes:
+      - ftp-data:${FTP_USER_HOME}
+    networks: [aws-masterclass]
+    restart: unless-stopped
+
+  # ---------------- Netdata (monitors every container above) ----------------
+  netdata:
+    image: netdata/netdata:latest
+    container_name: netdata
+    hostname: aws-masterclass-netdata
+    pid: host
+    network_mode: host
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      - NETDATA_CLAIM_TOKEN=${NETDATA_CLAIM_TOKEN}
+      - NETDATA_CLAIM_ROOMS=${NETDATA_CLAIM_ROOMS}
+      - NETDATA_CLAIM_URL=https://app.netdata.cloud
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - netdata-config:/etc/netdata
+      - netdata-lib:/var/lib/netdata
+      - netdata-cache:/var/cache/netdata
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    restart: unless-stopped
+    # network_mode: host means NETDATA_PORT (19999) is exposed directly on
+    # the host - no "ports:" mapping is possible/needed in this mode.
+    # host networking + the mounted docker.sock + /proc + /sys give Netdata
+    # full visibility into every other container's CPU/RAM/disk/network,
+    # which is how it "connects to" floci-aws, spark-master, spark-worker,
+    # pyspark, kafka, and ftp without any per-service config.
