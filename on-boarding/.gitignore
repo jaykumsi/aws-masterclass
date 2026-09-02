@@ -1,0 +1,2 @@
+# Local Docker stack secrets - do not commit real passwords
+settings.config
