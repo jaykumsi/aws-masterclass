@@ -122,12 +122,14 @@ services:
       - CLUSTER_ID=${KAFKA_CLUSTER_ID}
       - KAFKA_NODE_ID=0
       - KAFKA_PROCESS_ROLES=controller,broker
-      - KAFKA_LISTENERS=SASL_PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:${KAFKA_CONTROLLER_PORT}
-      - KAFKA_ADVERTISED_LISTENERS=SASL_PLAINTEXT://kafka:9092
-      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
+      # Separate listeners are required: containers resolve "kafka", while
+      # applications running on the host must receive "localhost" metadata.
+      - KAFKA_LISTENERS=INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:${KAFKA_CONTROLLER_PORT}
+      - KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka:29092,EXTERNAL://localhost:${KAFKA_BROKER_PORT}
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,INTERNAL:SASL_PLAINTEXT,EXTERNAL:SASL_PLAINTEXT
       - KAFKA_CONTROLLER_QUORUM_VOTERS=0@kafka:${KAFKA_CONTROLLER_PORT}
       - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_INTER_BROKER_LISTENER_NAME=SASL_PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
       - KAFKA_SASL_ENABLED_MECHANISMS=PLAIN
       - KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL=PLAIN
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
@@ -164,7 +166,6 @@ services:
     container_name: netdata
     hostname: aws-masterclass-netdata
     pid: host
-    network_mode: host
     cap_add:
       - SYS_PTRACE
       - SYS_ADMIN
@@ -175,6 +176,8 @@ services:
       - NETDATA_CLAIM_ROOMS=${NETDATA_CLAIM_ROOMS}
       - NETDATA_CLAIM_URL=https://app.netdata.cloud
       - DOCKER_HOST=unix:///var/run/docker.sock
+    ports:
+      - "${NETDATA_PORT}:19999"
     volumes:
       - netdata-config:/etc/netdata
       - netdata-lib:/var/lib/netdata
@@ -185,10 +188,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
+    networks: [aws-masterclass]
     restart: unless-stopped
-    # network_mode: host means NETDATA_PORT (19999) is exposed directly on
-    # the host - no "ports:" mapping is possible/needed in this mode.
-    # host networking + the mounted docker.sock + /proc + /sys give Netdata
-    # full visibility into every other container's CPU/RAM/disk/network,
-    # which is how it "connects to" floci-aws, spark-master, spark-worker,
-    # pyspark, kafka, and ftp without any per-service config.
+    # The Docker socket plus the /proc and /sys mounts provide container and
+    # host metrics. A normal port mapping is used because Docker Desktop host
+    # networking is optional and is commonly disabled on Windows.

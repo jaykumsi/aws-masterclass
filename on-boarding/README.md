@@ -61,7 +61,7 @@ of which folder you run it from.
   * Kafka broker (SASL/PLAIN): `localhost:9092`
   * Netdata dashboard: `http://localhost:19999`
   * FTP server: `localhost:21` (passive range `30000-30009`)
-* Netdata runs on host networking with the Docker socket mounted, so it automatically monitors every other container in the stack - no extra wiring needed.
+* Netdata uses the shared Docker network and mounts the Docker socket, `/proc`, and `/sys`, so it can monitor the other containers without requiring Docker Desktop's optional host-networking feature.
 
 **Step 7 - Stop / restart the stack**
 * Stop but keep all data (buckets, notebooks, Kafka topics, FTP files):
