@@ -30,13 +30,11 @@ services:
     # token even for community-tier services (localstack:latest now exits
     # with "License activation failed" unless LOCALSTACK_AUTH_TOKEN is set).
     image: localstack/localstack:3.8
-    container_name: floci-aws
     environment:
       - SERVICES=${FLOCI_SERVICES}
       - DEBUG=1
       - AWS_ACCESS_KEY_ID=${FLOCI_AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${FLOCI_AWS_SECRET_ACCESS_KEY}
-      - DEFAULT_REGION=${FLOCI_AWS_DEFAULT_REGION}
       - DOCKER_HOST=unix:///var/run/docker.sock
       - LOCALSTACK_AUTH_TOKEN=${FLOCI_AUTH_TOKEN}
     ports:
@@ -53,7 +51,6 @@ services:
   # longer has any public tags at all).
   spark-master:
     image: apache/spark:4.2.0-python3
-    container_name: spark-master
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
     ports:
       - "${SPARK_MASTER_PORT}:7077"   # Spark master RPC
@@ -63,7 +60,6 @@ services:
 
   spark-worker:
     image: apache/spark:4.2.0-python3
-    container_name: spark-worker
     depends_on: [spark-master]
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
     environment:
@@ -79,7 +75,6 @@ services:
     # docker.io/jupyter/pyspark-notebook stopped receiving pushes in 2023.
     # This tag bundles Spark 4.2.0, matching spark-master/spark-worker above.
     image: quay.io/jupyter/pyspark-notebook:latest
-    container_name: pyspark
     depends_on: [spark-master]
     environment:
       - JUPYTER_TOKEN=${PYSPARK_JUPYTER_TOKEN}
@@ -97,7 +92,6 @@ services:
   # Broadcom change removed all public tags for bitnami/kafka too).
   kafka:
     image: confluentinc/cp-kafka:7.6.13
-    container_name: kafka
     # cp-kafka's launch script only auto-generates the SASL JAAS file when
     # KAFKA_OPTS is left unset - but it also refuses to start SASL listeners
     # at all unless KAFKA_OPTS IS set, which is a contradiction for this
@@ -146,7 +140,6 @@ services:
   # ---------------- FTP server ----------------
   ftp:
     image: stilliard/pure-ftpd:latest
-    container_name: ftp-server
     environment:
       - FTP_USER_NAME=${FTP_USER_NAME}
       - FTP_USER_PASS=${FTP_USER_PASS}
@@ -163,7 +156,6 @@ services:
   # ---------------- Netdata (monitors every container above) ----------------
   netdata:
     image: netdata/netdata:latest
-    container_name: netdata
     hostname: aws-masterclass-netdata
     pid: host
     cap_add:
