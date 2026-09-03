@@ -1,4 +1,4 @@
-## [AWS Local Setup ](on-boarding/README.md)
+## [AWS Local Setup](README.md)
 * AWS Floci Docker
 * PySpark
 * Graphana (Cloud Watch Alternative)
@@ -7,7 +7,7 @@
 
 ### Docker stack
 
-[on-boarding/docker-compose.yml](on-boarding/docker-compose.yml) + [on-boarding/settings.config](on-boarding/settings.config)
+[on-boarding/docker-compose.yml](docker-compose.yml) + [on-boarding/settings.config](settings.config)
 bring up Floci (LocalStack) AWS, a PySpark cluster with UI, Kafka, an FTP server, and Netdata monitoring in one shot.
 The Docker Compose project is named `tinitiate-aws-masterclass` (set via the `name:` field in docker-compose.yml), so
 all containers, the network, and the named volumes it creates are prefixed `tinitiate-aws-masterclass_*` regardless
@@ -25,13 +25,13 @@ of which folder you run it from.
   ```
 
 **Step 2 - Get the project files**
-* Change into the `on-boarding` folder, which contains [docker-compose.yml](on-boarding/docker-compose.yml) and [settings.config](on-boarding/settings.config):
+* Change into the `on-boarding` folder, which contains [docker-compose.yml](docker-compose.yml) and [settings.config](settings.config):
   ```
   cd on-boarding
   ```
 
 **Step 3 - Set your passwords**
-* Open [settings.config](on-boarding/settings.config) and replace every `changeme_*` value with your own password/secret.
+* Open [settings.config](settings.config) and replace every `changeme_*` value with your own password/secret.
 * Leave the port numbers as-is unless something else on your machine already uses them.
 
 **Step 4 - Start the stack**
@@ -52,7 +52,7 @@ of which folder you run it from.
   ```
 
 **Step 6 - Open the UIs**
-* Endpoints (default ports, all overridable in [settings.config](on-boarding/settings.config)):
+* Endpoints (default ports, all overridable in [settings.config](settings.config)):
   * Floci AWS (LocalStack) edge: `http://localhost:4566`
   * Spark master UI: `http://localhost:8080`
   * Spark worker UI: `http://localhost:8081`
@@ -97,10 +97,10 @@ of which folder you run it from.
   ```
   aws --profile floci lambda list-functions
   ```
-* Every script under [aws-lambda/](aws-lambda/) uses this profile (`--profile floci` for the AWS CLI, `boto3.Session(profile_name="floci")` for Python) instead of hardcoding credentials or an endpoint URL.
+* Every script under [aws-lambda/](../aws-lambda/) uses this profile (`--profile floci` for the AWS CLI, `boto3.Session(profile_name="floci")` for Python) instead of hardcoding credentials or an endpoint URL.
 
 **Troubleshooting**
-* "port is already allocated" - another app on your machine is using that port; change the matching `*_PORT` value in [settings.config](on-boarding/settings.config) and rerun `up -d`.
+* "port is already allocated" - another app on your machine is using that port; change the matching `*_PORT` value in [settings.config](settings.config) and rerun `up -d`.
 * A container keeps restarting - run `docker compose --env-file settings.config logs -f <service-name>` to see why.
 * Forgot the `--env-file` flag - Compose falls back to `.env` (which doesn't exist here), so every `${VAR}` resolves empty and containers fail to start; always include `--env-file settings.config`.
 * `floci-aws` exits with "License activation failed" - only happens if you switch the image back to `localstack/localstack:latest`; newer LocalStack releases require a free-account auth token even for community services. The compose file pins `localstack/localstack:3.8`, which doesn't need one.
