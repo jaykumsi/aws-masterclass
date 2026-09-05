@@ -1,107 +1,244 @@
-## [AWS Local Setup](README.md)
-* AWS Floci Docker
-* PySpark
-* Graphana (Cloud Watch Alternative)
-* Setup and .aws folder instructions for floci
-* Kafka
+# AWS local setup
 
-### Docker stack
+This Docker Compose stack provides:
 
-[on-boarding/docker-compose.yml](docker-compose.yml) + [on-boarding/settings.config](settings.config)
-bring up Floci (LocalStack) AWS, a PySpark cluster with UI, Kafka, an FTP server, and Netdata monitoring in one shot.
-The Docker Compose project is named `tinitiate-aws-masterclass` (set via the `name:` field in docker-compose.yml), so
-all containers, the network, and the named volumes it creates are prefixed `tinitiate-aws-masterclass_*` regardless
-of which folder you run it from.
+- LocalStack (called Floci in this course)
+- Spark master and worker
+- PySpark/JupyterLab
+- Kafka
+- FTP
+- Netdata monitoring
 
-#### Install guide
+The stack is defined by [docker-compose.yml](docker-compose.yml), with non-secret
+defaults in [settings.config](settings.config). The Compose project name is
+`tinitiate-aws-masterclass`, so its containers, network, and volumes are isolated
+from other Compose projects.
 
-**Step 1 - Install Docker Desktop**
-* Windows 11 needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) with the WSL2 backend enabled (Docker Desktop prompts you to enable WSL2 on first run if it isn't already).
-* Start Docker Desktop and wait for it to show "Engine running" before continuing.
-* Verify from PowerShell:
-  ```
-  docker --version
-  docker compose version
-  ```
+## 1. Install and start Docker Desktop
 
-**Step 2 - Get the project files**
-* Change into the `on-boarding` folder, which contains [docker-compose.yml](docker-compose.yml) and [settings.config](settings.config):
-  ```
-  cd on-boarding
-  ```
+On Windows 11, install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+and enable its WSL 2 backend. Wait until Docker Desktop reports that the engine is
+running, then verify it from PowerShell:
 
-**Step 3 - Set your passwords**
-* Open [settings.config](settings.config) and replace every `changeme_*` value with your own password/secret.
-* Leave the port numbers as-is unless something else on your machine already uses them.
+```powershell
+docker --version
+docker compose version
+```
 
-**Step 4 - Start the stack**
-* From the `on-boarding` folder, run in an admin command terminal:
-  ```
-  docker compose --env-file settings.config up -d
-  ```
-* `-d` runs it in the background. The first run will take a few minutes while Docker pulls the images.
+If a command reports that `dockerDesktopLinuxEngine` cannot be found, Docker
+Desktop is not running or has not finished starting.
 
-**Step 5 - Check everything is healthy**
-* List running containers and their status:
-  ```
-  docker compose --env-file settings.config ps
-  ```
-* Tail logs for a specific service if something isn't starting (e.g. `kafka`, `floci-aws`, `pyspark`):
-  ```
-  docker compose --env-file settings.config logs -f kafka
-  ```
+## 2. Open the onboarding directory
 
-**Step 6 - Open the UIs**
-* Endpoints (default ports, all overridable in [settings.config](settings.config)):
-  * Floci AWS (LocalStack) edge: `http://localhost:4566`
-  * Spark master UI: `http://localhost:8080`
-  * Spark worker UI: `http://localhost:8081`
-  * PySpark Jupyter: `http://localhost:8888` (token in `PYSPARK_JUPYTER_TOKEN`)
-  * PySpark application UI: `http://localhost:4040`
-  * Kafka broker (SASL/PLAIN): `localhost:9092`
-  * Netdata dashboard: `http://localhost:19999`
-  * FTP server: `localhost:21` (passive range `30000-30009`)
-* Netdata uses the shared Docker network and mounts the Docker socket, `/proc`, and `/sys`, so it can monitor the other containers without requiring Docker Desktop's optional host-networking feature.
+From PowerShell:
 
-**Step 7 - Stop / restart the stack**
-* Stop but keep all data (buckets, notebooks, Kafka topics, FTP files):
-  ```
-  docker compose --env-file settings.config stop
-  ```
-* Start it again later:
-  ```
-  docker compose --env-file settings.config start
-  ```
-* Fully tear down (also removes containers, keeps named volumes/data):
-  ```
-  docker compose --env-file settings.config down
-  ```
-* Fully tear down **and** wipe all stored data:
-  ```
-  docker compose --env-file settings.config down -v
-  ```
+```powershell
+cd C:\Code\aws-masterclass\on-boarding
+```
 
-**Step 8 - Create the `.aws` profile for Floci**
-* AWS CLI/boto3 tools normally read credentials from a `credentials` and `config` file under your `.aws` folder. Run the setup script once to add a `floci` profile there, pointing every service at `http://localhost:4566`:
-  * **Windows** (`%USERPROFILE%\.aws\credentials` / `config`), from PowerShell:
-    ```
-    .\setup-floci-profile.ps1
-    ```
-  * **Mac** (`~/.aws/credentials` / `config`), from Terminal:
-    ```
-    chmod +x ./setup-floci-profile.sh
-    ./setup-floci-profile.sh
-    ```
-* It's safe to run even if you already have other AWS profiles - it only adds a `[floci]` / `[profile floci]` section and never touches anything else in those files. Running it again is a no-op if the profile already exists.
-* Verify it works:
-  ```
-  aws --profile floci lambda list-functions
-  ```
-* Every script under [aws-lambda/](../aws-lambda/) uses this profile (`--profile floci` for the AWS CLI, `boto3.Session(profile_name="floci")` for Python) instead of hardcoding credentials or an endpoint URL.
+Change the `changeme_*` passwords in [settings.config](settings.config). Leave
+the ports unchanged unless another program is already using one of them.
 
-**Troubleshooting**
-* "port is already allocated" - another app on your machine is using that port; change the matching `*_PORT` value in [settings.config](settings.config) and rerun `up -d`.
-* A container keeps restarting - run `docker compose --env-file settings.config logs -f <service-name>` to see why.
-* Forgot the `--env-file` flag - Compose falls back to `.env` (which doesn't exist here), so every `${VAR}` resolves empty and containers fail to start; always include `--env-file settings.config`.
-* `floci-aws` exits with "License activation failed" - only happens if you switch the image back to `localstack/localstack:latest`; newer LocalStack releases require a free-account auth token even for community services. The compose file pins `localstack/localstack:3.8`, which doesn't need one.
-* Images pull errors for `bitnami/kafka` or `bitnami/spark` - Broadcom removed the free `latest` tags for most Bitnami images in 2025. This stack already avoids them (Kafka runs on `confluentinc/cp-kafka`, Spark on the official `apache/spark` image).
+Never put a real LocalStack auth token in `settings.config` or commit one to GitHub.
+
+## 3. Create a LocalStack account
+
+Maintained LocalStack images require an account and auth token.
+
+1. Open [LocalStack Web Application](https://app.localstack.cloud).
+2. Sign in with GitHub, Google, Microsoft, SSO, or email.
+3. For personal, non-commercial learning, select **Hobby plan**. It is the free
+   option. Select **Trial plan** only when you intentionally want the Ultimate trial.
+4. Finish account setup and copy the **Personal Auth Token** from Getting Started.
+
+Treat the auth token like a password. Do not paste it into chat, screenshots,
+source files, commits, or issue descriptions.
+
+## 4. Set the LocalStack token safely
+
+Set the token in the PowerShell window that will run Docker Compose. `Read-Host`
+keeps the token out of PowerShell command history:
+
+```powershell
+$secureToken = Read-Host "Paste LocalStack token" -AsSecureString
+$env:FLOCI_AUTH_TOKEN = [Net.NetworkCredential]::new("", $secureToken).Password
+```
+
+The environment variable lasts only for that PowerShell session. Set it again
+after opening a new terminal or restarting the stack.
+
+For macOS/Linux:
+
+```bash
+read -rsp "Paste LocalStack token: " FLOCI_AUTH_TOKEN
+export FLOCI_AUTH_TOKEN
+echo
+```
+
+## 5. Start the stack
+
+From the `on-boarding` directory:
+
+```powershell
+docker compose --env-file settings.config pull
+docker compose --env-file settings.config up -d
+```
+
+The first run downloads several large images and can take several minutes.
+
+Check container status:
+
+```powershell
+docker compose --env-file settings.config ps
+```
+
+Inspect a service when it fails to start:
+
+```powershell
+docker compose --env-file settings.config logs --tail 100 floci-aws
+docker compose --env-file settings.config logs --tail 100 kafka
+```
+
+## 6. Verify LocalStack
+
+Check the LocalStack API health endpoint:
+
+```powershell
+curl.exe http://localhost:4566/_localstack/health
+```
+
+The response should list the LocalStack version, edition, and AWS service status.
+The LocalStack logs must not contain `License activation failed`.
+
+Opening `http://localhost:4566` directly may show a blank page. This is expected:
+port `4566` is an AWS API gateway, not the graphical Resource Browser.
+
+## 7. Connect the LocalStack Resource Browser
+
+1. Open [LocalStack Web Application](https://app.localstack.cloud) and sign in.
+2. Under **Instances**, click `localhost.localstack.cloud`.
+3. If the instance is not detected, click **New Instance** and use
+   `http://localhost:4566` as the endpoint.
+4. In Chrome, allow **Local network access** for `app.localstack.cloud`, then
+   refresh the page.
+5. Open **Resource Browser**, choose **S3**, and select region `us-east-1`.
+
+If the browser says it cannot connect to a licensed instance, check the running
+version:
+
+```powershell
+docker compose --env-file settings.config exec floci-aws localstack --version
+```
+
+An old `3.8.x Community` container is unsupported by the current Resource Browser.
+Confirm [docker-compose.yml](docker-compose.yml) uses
+`localstack/localstack:latest`, set `FLOCI_AUTH_TOKEN`, then upgrade only LocalStack:
+
+```powershell
+docker compose --env-file settings.config pull floci-aws
+docker compose --env-file settings.config up -d --force-recreate floci-aws
+```
+
+## 8. Create the `floci` AWS profile
+
+The boto3 and AWS CLI examples use a profile named `floci` that points to port
+`4566`. Run the appropriate setup script once.
+
+Windows PowerShell:
+
+```powershell
+.\setup-floci-profile.ps1
+```
+
+macOS/Linux:
+
+```bash
+chmod +x ./setup-floci-profile.sh
+./setup-floci-profile.sh
+```
+
+The scripts add only the `floci` profile and preserve other AWS profiles.
+
+Test it:
+
+```powershell
+aws --profile floci s3api list-buckets
+```
+
+## 9. Run the boto3 S3 examples
+
+Continue with the [S3 boto3 guide](../aws-s3-operations/aws-s3-readme.md), or run:
+
+```powershell
+cd ..\aws-s3-operations
+python -m pip install -r requirements.txt
+python scripts\01_create_bucket.py student-training-bucket
+python scripts\04_list_buckets.py
+```
+
+Refresh **Resource Browser → S3** to see the new bucket.
+
+## Service endpoints
+
+| Service | Endpoint |
+|---|---|
+| LocalStack AWS API | `http://localhost:4566` |
+| Spark master UI | `http://localhost:8080` |
+| Spark worker UI | `http://localhost:8081` |
+| JupyterLab | `http://localhost:8888` |
+| PySpark application UI | `http://localhost:4040` |
+| Kafka SASL/PLAIN broker | `localhost:9092` |
+| Netdata dashboard | `http://localhost:19999` |
+| FTP | `localhost:21` (`30000-30009` passive ports) |
+
+## Stop or remove the stack
+
+Stop containers while retaining data:
+
+```powershell
+docker compose --env-file settings.config stop
+```
+
+Start stopped containers after setting `FLOCI_AUTH_TOKEN`:
+
+```powershell
+docker compose --env-file settings.config start
+```
+
+Remove containers and keep named-volume data:
+
+```powershell
+docker compose --env-file settings.config down
+```
+
+Remove containers and permanently erase all LocalStack, Kafka, notebook, FTP,
+and Netdata volume data:
+
+```powershell
+docker compose --env-file settings.config down -v
+```
+
+## Troubleshooting
+
+- **Missing `FLOCI_AUTH_TOKEN`**: set it in the same terminal before running
+  Compose. The Compose file intentionally stops early when the token is empty.
+- **License activation failed**: confirm the token starts with `ls-`, has no
+  surrounding quotes or spaces, and belongs to the active LocalStack workspace.
+- **Resource Browser reports an old/unsupported image**: pull and recreate
+  `floci-aws` using the commands in step 7.
+- **Resource Browser reports a network failure**: allow Chrome local-network
+  access and confirm the health endpoint responds.
+- **`floci` profile not found**: run `setup-floci-profile.ps1` or
+  `setup-floci-profile.sh` from this directory.
+- **Port already allocated**: change the corresponding `*_PORT` value in
+  `settings.config`, then recreate that service.
+- **Container keeps restarting**: inspect it with
+  `docker compose --env-file settings.config logs --tail 100 <service>`.
+- **Kafka name conflict**: use this Compose file without adding hard-coded
+  `container_name` values; Compose generates project-scoped names.
+
+LocalStack references:
+
+- [Authentication and auth tokens](https://docs.localstack.cloud/aws/getting-started/auth-token/)
+- [Resource Browser](https://docs.localstack.cloud/aws/connecting/console/resource-browser/)
+- [LocalStack plans](https://docs.localstack.cloud/aws/licensing/)

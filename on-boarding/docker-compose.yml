@@ -26,17 +26,16 @@ services:
 
   # ---------------- Floci AWS (LocalStack) ----------------
   floci-aws:
-    # Pinned to 3.8 - newer LocalStack releases require a free-account auth
-    # token even for community-tier services (localstack:latest now exits
-    # with "License activation failed" unless LOCALSTACK_AUTH_TOKEN is set).
-    image: localstack/localstack:3.8
+    # Maintained LocalStack releases require an account and auth token. The
+    # free Hobby plan is suitable for personal, non-commercial training.
+    image: localstack/localstack:latest
     environment:
       - SERVICES=${FLOCI_SERVICES}
       - DEBUG=1
       - AWS_ACCESS_KEY_ID=${FLOCI_AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${FLOCI_AWS_SECRET_ACCESS_KEY}
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - LOCALSTACK_AUTH_TOKEN=${FLOCI_AUTH_TOKEN}
+      - LOCALSTACK_AUTH_TOKEN=${FLOCI_AUTH_TOKEN:?Set FLOCI_AUTH_TOKEN in your shell before starting LocalStack}
     ports:
       - "${FLOCI_EDGE_PORT}:4566"
     volumes:
