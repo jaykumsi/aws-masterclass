@@ -51,6 +51,14 @@ Maintained LocalStack images require an account and auth token.
    option. Select **Trial plan** only when you intentionally want the Ultimate trial.
 4. Finish account setup and copy the **Personal Auth Token** from Getting Started.
 
+Select the free AWS Hobby plan:
+
+![LocalStack Hobby plan selection](../images/01_localstack_hobby_plan.png)
+
+Complete the required Hobby account details and select **Enter LocalStack**:
+
+![Completed LocalStack Hobby account form](../images/02_localstack_hobby_account_details.png)
+
 Treat the auth token like a password. Do not paste it into chat, screenshots,
 source files, commits, or issue descriptions.
 
@@ -58,6 +66,10 @@ source files, commits, or issue descriptions.
 
 Set the token in the PowerShell window that will run Docker Compose. `Read-Host`
 keeps the token out of PowerShell command history:
+
+The masked token is displayed on the LocalStack **Getting Started** page:
+
+![LocalStack Personal Auth Token location](../images/03_localstack_personal_auth_token.png)
 
 ```powershell
 $secureToken = Read-Host "Paste LocalStack token" -AsSecureString
@@ -122,6 +134,11 @@ port `4566` is an AWS API gateway, not the graphical Resource Browser.
 4. In Chrome, allow **Local network access** for `app.localstack.cloud`, then
    refresh the page.
 5. Open **Resource Browser**, choose **S3**, and select region `us-east-1`.
+
+The Resource Browser lists the AWS services available to the selected plan. S3
+appears under **Storage**:
+
+![LocalStack AWS Resource Browser with S3](../images/04_localstack_resource_browser.png)
 
 If the browser says it cannot connect to a licensed instance, check the running
 version:

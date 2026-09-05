@@ -118,6 +118,8 @@ python scripts\03_delete_bucket.py student-training-bucket
 To observe each operation visually, open the LocalStack Web Application, choose
 **Resource Browser → S3**, select `us-east-1`, and refresh after each command.
 
+![LocalStack AWS Resource Browser with S3](../images/04_localstack_resource_browser.png)
+
 #### Bucket operations
 
 ```powershell
